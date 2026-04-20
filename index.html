@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Receipt Scanner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --border: #2e2e3e;
+    --accent: #7c6af7;
+    --accent2: #5eead4;
+    --text: #e8e8f0;
+    --muted: #7878a0;
+    --success: #4ade80;
+    --error: #f87171;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding: 0; }
+  .app { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { text-align: center; padding: 28px 0 24px; }
+  header .logo { font-size: 2rem; margin-bottom: 6px; }
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px; }
+  header p { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+  /* Upload zone */
+  .upload-zone { border: 2px dashed var(--border); border-radius: 16px; padding: 36px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); position: relative; }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: #1e1e2e; }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-zone .icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-zone h3 { font-size: 1rem; font-weight: 600; }
+  .upload-zone p { color: var(--muted); font-size: 0.8rem; margin-top: 5px; }
+
+  /* Preview */
+  .preview-wrap { position: relative; border-radius: 16px; overflow: hidden; margin-top: 16px; display: none; }
+  .preview-wrap img { width: 100%; max-height: 300px; object-fit: contain; background: var(--surface2); display: block; }
+  .preview-wrap .remove-btn { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); border: none; color: #fff; border-radius: 50%; width: 32px; height: 32px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  /* Buttons */
+  .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 14px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #6a59e0; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-download { background: linear-gradient(135deg, #2d6a4f, #40916c); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-download:hover { background: linear-gradient(135deg, #40916c, #52b788); }
+
+  /* Loading */
+  .loading { text-align: center; padding: 32px 20px; display: none; }
+  .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 14px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { color: var(--muted); font-size: 0.9rem; }
+  .loading .step { color: var(--accent2); font-size: 0.85rem; margin-top: 6px; }
+
+  /* Results */
+  .results { display: none; }
+  .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .results-header h2 { font-size: 1.1rem; font-weight: 700; }
+  .badge { background: var(--success); color: #052e16; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
+
+  .info-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .label { color: var(--muted); font-size: 0.85rem; }
+  .info-row .value { font-size: 0.9rem; font-weight: 500; text-align: right; max-width: 60%; }
+
+  .items-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+  .items-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 4px 0 8px; border-bottom: 1px solid var(--border); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .items-table th:last-child, .items-table td:last-child { text-align: right; }
+  .items-table td { padding: 7px 0; border-bottom: 1px solid #1e1e2a; }
+  .items-table tr:last-child td { border-bottom: none; }
+  .items-table .qty { color: var(--muted); font-size: 0.78rem; }
+
+  .totals { margin-top: 2px; }
+  .total-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.88rem; }
+  .total-row.grand { font-size: 1rem; font-weight: 700; color: var(--accent2); border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+  .total-row .tot-label { color: var(--muted); }
+  .total-row.grand .tot-label { color: var(--accent2); }
+
+  /* JSON viewer */
+  .json-toggle { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; padding: 6px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 10px; }
+  .json-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .json-box { background: var(--surface2); border-radius: 10px; padding: 14px; font-family: 'Courier New', monospace; font-size: 0.72rem; color: var(--accent2); overflow-x: auto; white-space: pre; line-height: 1.5; display: none; max-height: 260px; overflow-y: auto; }
+
+  /* Error */
+  .error-box { background: #2a1515; border: 1px solid #5a2020; border-radius: 12px; padding: 14px 16px; color: var(--error); font-size: 0.85rem; display: none; margin-top: 14px; }
+
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .scan-again { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">🧾</div>
+    <h1>Receipt Scanner</h1>
+    <p>Snap a receipt, get instant structured data</p>
+  </header>
+
+  <!-- Upload -->
+  <div id="uploadSection">
+    <div class="upload-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*" capture="environment"/>
+      <div class="icon">📷</div>
+      <h3>Take or upload a photo</h3>
+      <p>JPG, PNG, HEIC supported</p>
+    </div>
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" src="" alt="Receipt preview"/>
+      <button class="remove-btn" id="removeBtn">✕</button>
+    </div>
+    <div class="error-box" id="errorBox"></div>
+    <button class="btn btn-primary" id="scanBtn" disabled>🔍 Scan Receipt</button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loadingSection">
+    <div class="spinner"></div>
+    <p>Analysing your receipt…</p>
+    <div class="step" id="loadingStep">Sending to AI…</div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="resultsSection">
+    <div class="results-header">
+      <h2>Parsed Receipt</h2>
+      <span class="badge">✓ Done</span>
+    </div>
+
+    <!-- Restaurant Info -->
+    <div class="card" id="infoCard">
+      <div class="card-title">Restaurant</div>
+      <div id="infoRows"></div>
+    </div>
+
+    <!-- Items -->
+    <div class="card" id="itemsCard">
+      <div class="card-title">Items</div>
+      <table class="items-table">
+        <thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Totals -->
+    <div class="card">
+      <div class="card-title">Totals</div>
+      <div class="totals" id="totalsRows"></div>
+    </div>
+
+    <!-- JSON -->
+    <button class="json-toggle" id="jsonToggle">{ } View raw JSON</button>
+    <div class="json-box" id="jsonBox"></div>
+
+    <!-- Download -->
+    <button class="btn btn-download" id="downloadBtn">⬇ Download JSON File</button>
+    <button class="btn btn-secondary scan-again" id="scanAgainBtn">↩ Scan Another Receipt</button>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const previewWrap = document.getElementById('previewWrap');
+const previewImg = document.getElementById('previewImg');
+const removeBtn = document.getElementById('removeBtn');
+const scanBtn = document.getElementById('scanBtn');
+const errorBox = document.getElementById('errorBox');
+const uploadSection = document.getElementById('uploadSection');
+const loadingSection = document.getElementById('loadingSection');
+const loadingStep = document.getElementById('loadingStep');
+const resultsSection = document.getElementById('resultsSection');
+const downloadBtn = document.getElementById('downloadBtn');
+const scanAgainBtn = document.getElementById('scanAgainBtn');
+const jsonToggle = document.getElementById('jsonToggle');
+const jsonBox = document.getElementById('jsonBox');
+
+let currentFile = null;
+let parsedData = null;
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+function loadFile(f) {
+  currentFile = f;
+  const url = URL.createObjectURL(f);
+  previewImg.src = url;
+  previewWrap.style.display = 'block';
+  scanBtn.disabled = false;
+  hideError();
+}
+
+removeBtn.addEventListener('click', () => {
+  currentFile = null;
+  previewWrap.style.display = 'none';
+  previewImg.src = '';
+  scanBtn.disabled = true;
+  fileInput.value = '';
+});
+
+scanBtn.addEventListener('click', scanReceipt);
+scanAgainBtn.addEventListener('click', resetApp);
+downloadBtn.addEventListener('click', downloadJSON);
+jsonToggle.addEventListener('click', () => {
+  const open = jsonBox.style.display === 'block';
+  jsonBox.style.display = open ? 'none' : 'block';
+  jsonToggle.textContent = open ? '{ } View raw JSON' : '{ } Hide raw JSON';
+});
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.style.display = 'block';
+}
+function hideError() { errorBox.style.display = 'none'; }
+
+async function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function scanReceipt() {
+  if (!currentFile) return;
+  hideError();
+  uploadSection.style.display = 'none';
+  loadingSection.style.display = 'block';
+
+  const steps = ['Sending to AI…', 'Reading receipt…', 'Extracting items…', 'Building JSON…'];
+  let si = 0;
+  const stepInterval = setInterval(() => {
+    si = (si + 1) % steps.length;
+    loadingStep.textContent = steps[si];
+  }, 1400);
+
+  try {
+    const b64 = await toBase64(currentFile);
+    const mediaType = currentFile.type || 'image/jpeg';
+
+    const prompt = `You are a receipt parser. Analyse this restaurant receipt image and extract ALL information into a JSON object.
+
+Return ONLY valid JSON, no markdown, no explanation.
+
+Schema:
+{
+  "restaurant": {
+    "name": string or null,
+    "address": string or null,
+    "phone": string or null,
+    "website": string or null
+  },
+  "transaction": {
+    "date": string or null,
+    "time": string or null,
+    "order_number": string or null,
+    "table_number": string or null,
+    "server_name": string or null,
+    "payment_method": string or null
+  },
+  "items": [
+    {
+      "name": string,
+      "quantity": number,
+      "unit_price": number or null,
+      "total_price": number or null,
+      "notes": string or null
+    }
+  ],
+  "totals": {
+    "subtotal": number or null,
+    "discount": number or null,
+    "tax": number or null,
+    "tip": number or null,
+    "total": number or null,
+    "currency": string
+  },
+  "raw_notes": string or null
+}
+
+If a field is not visible or not applicable, use null. For currency use ISO 4217 code (e.g. "USD").`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    clearInterval(stepInterval);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || 'API error');
+
+    const raw = data.content.map(b => b.text || '').join('');
+    const clean = raw.replace(/```json|```/gi, '').trim();
+    parsedData = JSON.parse(clean);
+    parsedData._meta = { scanned_at: new Date().toISOString(), filename: currentFile.name };
+
+    loadingSection.style.display = 'none';
+    renderResults(parsedData);
+    resultsSection.style.display = 'block';
+  } catch (err) {
+    clearInterval(stepInterval);
+    loadingSection.style.display = 'none';
+    uploadSection.style.display = 'block';
+    showError('Could not parse receipt: ' + err.message);
+  }
+}
+
+function fmt(val) {
+  if (val === null || val === undefined) return '—';
+  return String(val);
+}
+function fmtMoney(val, currency) {
+  if (val === null || val === undefined) return '—';
+  const sym = currencySymbol(currency);
+  return sym + Number(val).toFixed(2);
+}
+function currencySymbol(c) {
+  const map = { USD:'$', EUR:'€', GBP:'£', CAD:'CA$', AUD:'A$', JPY:'¥' };
+  return map[c] || (c ? c + ' ' : '$');
+}
+
+function renderResults(d) {
+  // Restaurant info
+  const r = d.restaurant || {};
+  const t = d.transaction || {};
+  const infoRows = document.getElementById('infoRows');
+  const fields = [
+    ['Name', r.name], ['Address', r.address], ['Phone', r.phone],
+    ['Date', t.date], ['Time', t.time], ['Order #', t.order_number],
+    ['Table', t.table_number], ['Server', t.server_name], ['Payment', t.payment_method]
+  ];
+  infoRows.innerHTML = fields.filter(([,v]) => v).map(([l,v]) =>
+    `<div class="info-row"><span class="label">${l}</span><span class="value">${v}</span></div>`
+  ).join('') || '<div style="color:var(--muted);font-size:.85rem">No info found</div>';
+
+  // Items
+  const items = d.items || [];
+  const cur = d.totals?.currency || 'USD';
+  const itemsBody = document.getElementById('itemsBody');
+  itemsBody.innerHTML = items.length ? items.map(it =>
+    `<tr>
+      <td>${it.name}${it.notes ? `<br><span class="qty">${it.notes}</span>` : ''}</td>
+      <td class="qty">${it.quantity ?? 1}</td>
+      <td>${fmtMoney(it.total_price ?? it.unit_price, cur)}</td>
+    </tr>`
+  ).join('') : '<tr><td colspan="3" style="color:var(--muted);padding:8px 0">No items found</td></tr>';
+
+  // Totals
+  const tots = d.totals || {};
+  const totRows = document.getElementById('totalsRows');
+  const totFields = [
+    ['Subtotal', tots.subtotal], ['Discount', tots.discount],
+    ['Tax', tots.tax], ['Tip', tots.tip]
+  ];
+  totRows.innerHTML = totFields.filter(([,v]) => v !== null && v !== undefined).map(([l,v]) =>
+    `<div class="total-row"><span class="tot-label">${l}</span><span>${fmtMoney(v, cur)}</span></div>`
+  ).join('') +
+  `<div class="total-row grand"><span class="tot-label">Total</span><span>${fmtMoney(tots.total, cur)}</span></div>`;
+
+  // JSON
+  jsonBox.textContent = JSON.stringify(d, null, 2);
+}
+
+function downloadJSON() {
+  if (!parsedData) return;
+  const blob = new Blob([JSON.stringify(parsedData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0,10);
+  a.download = `receipt_${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetApp() {
+  parsedData = null;
+  currentFile = null;
+  fileInput.value = '';
+  previewImg.src = '';
+  previewWrap.style.display = 'none';
+  scanBtn.disabled = true;
+  jsonBox.style.display = 'none';
+  jsonToggle.textContent = '{ } View raw JSON';
+  hideError();
+  resultsSection.style.display = 'none';
+  uploadSection.style.display = 'block';
+}
+</script>
+</body>
+</html>
